@@ -7,6 +7,7 @@ import android.text.TextUtils;
 
 import com.apptimize.Apptimize;
 import com.apptimize.ApptimizeOptions;
+import com.apptimize.Apptimize.OnExperimentRunListener;
 import com.mparticle.MPEvent;
 import com.mparticle.MParticle;
 import com.mparticle.commerce.CommerceEvent;
@@ -20,7 +21,8 @@ public class ApptimizeKit
         extends KitIntegration
         implements KitIntegration.AttributeListener,
         KitIntegration.EventListener,
-        KitIntegration.CommerceListener {
+        KitIntegration.CommerceListener,
+        OnExperimentRunListener {
 
     private static final String APP_MP_KEY = "appKey";
     private static final String UPDATE_METDATA_TIMEOUT_MP_KEY = "metadataTimeout";
@@ -32,6 +34,7 @@ public class ApptimizeKit
     private static final String LOGOUT_TAG = "logout";
     private static final String LTV_TAG = "ltv";
     private static final String VIEWED_EVENT_FORMAT = "screenView %s";
+    private static final String TRACK_EXPERIMENTS = "trackExperiments";
 
     private List<ReportingMessage> toMessageList(final ReportingMessage message) {
         return Collections.singletonList(message);
@@ -54,6 +57,9 @@ public class ApptimizeKit
         }
         final ApptimizeOptions options = buildApptimizeOptions(settings);
         Apptimize.setup(context, appKey, options);
+        if (Boolean.parseBoolean(settings.get(TRACK_EXPERIMENTS))) {
+            Apptimize.setOnExperimentRunListener(this);
+        }
         return null;
     }
 
@@ -241,5 +247,33 @@ public class ApptimizeKit
             ret = toMessageList(createReportingMessage(ReportingMessage.MessageType.OPT_OUT).setOptOut(optedOut));
         }
         return ret;
+    }
+
+    @Override
+    public void onExperimentRun(String experimentName, String variantName, boolean firstRun) {
+        if (!firstRun) {
+            return;
+        }
+
+        Map<String, String> eventInfo = new java.util.HashMap<String, String>(4);
+
+        Map<Long, Map<String, Object>> variants = Apptimize.getVariants();
+        if (variants != null) {
+            for (java.util.Map.Entry<Long, Map<String, Object>> entry : variants.entrySet()) {
+                if (variantName == entry.getValue().get("variantName")) {
+                    eventInfo.put("variationId", entry.getValue().get("variantId").toString());
+                    eventInfo.put("experimentId", entry.getValue().get("experimentId").toString());
+                    break;
+                }
+            }
+        }
+
+        eventInfo.put("experimentName", experimentName);
+        eventInfo.put("variationName", variantName);
+
+        MPEvent event = new MPEvent.Builder("Experiment Viewed", MParticle.EventType.Other)
+                                   .info(eventInfo)
+                                   .build();
+        MParticle.getInstance().logEvent(event);
     }
 }
