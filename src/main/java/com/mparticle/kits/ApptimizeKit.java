@@ -7,12 +7,14 @@ import android.text.TextUtils;
 
 import com.apptimize.Apptimize;
 import com.apptimize.ApptimizeOptions;
+import com.apptimize.ApptimizeTestInfo;
 import com.apptimize.Apptimize.OnExperimentRunListener;
 import com.mparticle.MPEvent;
 import com.mparticle.MParticle;
 import com.mparticle.commerce.CommerceEvent;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -255,23 +257,36 @@ public class ApptimizeKit
             return;
         }
 
-        Map<String, String> eventInfo = new java.util.HashMap<String, String>(4);
+        Map<String, ApptimizeTestInfo> testInfoMap = Apptimize.getTestInfo();
+        List<String> participatedExperiments = new ArrayList<String>();
+        for (String key : testInfoMap.keySet()) {
+            ApptimizeTestInfo testInfo = testInfoMap.get(key);
+            if(testInfo.userHasParticipated()) {
+                String nameAndVariation = testInfo.getTestName() + "-" + testInfo.getEnrolledVariantName();
+                participatedExperiments.add(nameAndVariation);
+            }
+        }
+
+        MParticle.getInstance().setUserAttributeList("Apptimize experiment", participatedExperiments);
+
+        Map<String, String> eventInfo = new java.util.HashMap<String, String>(5);
 
         Map<Long, Map<String, Object>> variants = Apptimize.getVariants();
         if (variants != null) {
             for (java.util.Map.Entry<Long, Map<String, Object>> entry : variants.entrySet()) {
                 if (variantName == entry.getValue().get("variantName")) {
-                    eventInfo.put("variationId", entry.getValue().get("variantId").toString());
-                    eventInfo.put("experimentId", entry.getValue().get("experimentId").toString());
+                    eventInfo.put("VariationID", entry.getValue().get("variantId").toString());
+                    eventInfo.put("ID", entry.getValue().get("experimentId").toString());
                     break;
                 }
             }
         }
 
-        eventInfo.put("experimentName", experimentName);
-        eventInfo.put("variationName", variantName);
+        eventInfo.put("Name", experimentName);
+        eventInfo.put("Variation", variantName);
+        eventInfo.put("Name and Variation", experimentName + "-" + variantName);
 
-        MPEvent event = new MPEvent.Builder("Experiment Viewed", MParticle.EventType.Other)
+        MPEvent event = new MPEvent.Builder("Apptimize experiment", MParticle.EventType.Other)
                                    .info(eventInfo)
                                    .build();
         MParticle.getInstance().logEvent(event);
